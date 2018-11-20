@@ -1,17 +1,19 @@
 # include <stdlib.h>
+# include <stdio.h>
 # include <math.h>
 
-struct cache_t {
-    int sets;
-    int dir;
-    int line_size;
-    struct Cache_Line* lines;
-} Cache;
 
-struct cache_line_t {
+typedef struct cache_line_t {
     int* use_order;
     int* tag;       // 1 or more tags
 } Cache_Line;
+
+typedef struct cache_t {
+    int sets;
+    int dir;
+    int line_size;
+    Cache_Line** lines;
+} Cache;
 
 int get_index(int val, int* val_list, int len)
 {
@@ -46,53 +48,65 @@ void update_use(int* order_list, int new_least, int len)
 
 Cache* create_cache(int line_size, int directories, int sets)
 {
-    CacheLine entries[sets];
+    Cache_Line** entries = malloc( sets*sizeof(Cache_Line*) );
     for( int i = 0; i < sets; i++ )
     {
-        CacheLine line;
-        line.tag = null;
-
-        int tags[directories];
+        Cache_Line* line = malloc( sizeof(Cache_Line) );
+        line->tag = malloc( directories*sizeof(int) );
+        int* tags = malloc( directories*sizeof(int) );
         for (int j = 0; j < directories; j++)
         {
             tags[j] = j;
+            line->tag[j] = -1;
         }
-
-        line.use_order = tags;
+        line->use_order = tags;
         entries[i] = line;
+        
     }
-    Cache cache;
-    cache.sets = sets;
-    cache.dir = directories;
-    cache.line_size = line_size;
-    cache.lines = entries;
+    
+    Cache* cache = malloc( sizeof(Cache) );
+    cache->sets = sets;
+    cache->dir = directories;
+    cache->line_size = line_size;
+    cache->lines = entries;
 
-    return &cache;
+    
+    return cache;
 }
 
 int get_cache_hits(Cache* cache, int* access_list, int list_len)
 {
     int hits = 0;
-    int set_width = log(cache->sets);
+    int set_width = ceil(log((double)cache->sets));
+    
+    int mask = 0;
+    for (int t = set_width; t > 0; t--)
+        mask = (mask << 1) + 1;
+    
     for (int i = 0; i < list_len; i++)
     {
         unsigned short address = access_list[i];
         int offset = address & 0x000F;
-        int set = (address << (12-set_width)) >> (12-set_width*2);
+          
+        int set = (address >> 4) & mask;
         int tag = address >> 4 + set_width;
-
-        CacheLine this_line = cache->lines[i];
-        int k = get_index(tag, this_line.tag, cache->dir);
-
+        
+        Cache_Line* this_line = cache->lines[set];
+        printf("addr = 0x%4x : set = %d :   ", address, set);
+        
+        int k = get_index(tag, this_line->tag, cache->dir);
+        
         if ( k != -1 ) {
-            hit++; // I guess ya never miss huh
+            hits++; // I guess ya never miss huh
+            printf("hit\n");
             if (cache->dir > 1)
-                update_use(this_line.use_order, k);
+                update_use(this_line->use_order, k, cache->dir);
         }
         else {
-            int least = get_least_recently_used(this_line.use_order, cache->dir);
-            update_use(this_line.use_order, least, cache->dir);
-            this_line.tag[least] = tag;
+            printf("miss\n");
+            int least = get_least_recently_used(this_line->use_order, cache->dir);
+            update_use(this_line->use_order, least, cache->dir);
+            this_line->tag[least] = tag;
         }
     }
     return hits;
@@ -104,16 +118,31 @@ int main(int argc, char** argv)
     int sets;
     int line_size;
 
-    // user input
+    if (argc == 4) {
+      directories = atoi(argv[1]);
+      sets = atoi(argv[2]);
+      line_size = atoi(argv[3]);
+    }
+    else {
+      printf("Using defaults. Dir = 1, Sets = 8\n\n");
+      directories = 1;
+      sets = 8;
+      line_size = 16;
+    }
 
-    int* addresses;
-    int list_len;
-    // parse addresses
+    int addresses[] 
+          = { 0x0000, 0x0004, 0x000c, 0x2200, 0x00d0, 0x00e0, 0x1130, 0x0028,
+              0x113c, 0x2204, 0x0010, 0x0020, 0x0004, 0x0040, 0x2208, 0x0008,
+              0x00a0, 0x0004, 0x1104, 0x0028, 0x000c, 0x0084, 0x000c, 0x3390,
+              0x00b0, 0x1100, 0x0028, 0x0064, 0x0070, 0x00d0, 0x0008, 0x3394 };
+              
+    int list_len = 32;
 
     Cache* cache = create_cache(line_size, directories, sets);
 
     int hits = get_cache_hits(cache, addresses, list_len);
     int misses = list_len - hits;
 
-    printf("Hits: %d\nMisses: %d\nTotal: %d", hits, misses, list_len);
+    printf("\nHits: %d\nMisses: %d\nTotal: %d", hits, misses, list_len);
+    
 }
