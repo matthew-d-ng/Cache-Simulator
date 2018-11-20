@@ -143,6 +143,6 @@ int main(int argc, char** argv)
     int hits = get_cache_hits(cache, addresses, list_len);
     int misses = list_len - hits;
 
-    printf("\nHits: %d\nMisses: %d\nTotal: %d", hits, misses, list_len);
+    printf("\nHits: %d\nMisses: %d\nTotal: %d\n", hits, misses, list_len);
     
 }
